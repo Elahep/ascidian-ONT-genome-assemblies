@@ -15,7 +15,7 @@ Aplidium sp. (Antarctic endemic), Aplidium coronum (New Zealand range-limited), 
 ## Step 0: SUP basecalling and demultiplexing
 Raw Oxford Nanopore signal data were basecalled and barcode-classified by Annabel Whibley (Bragato Research Institute) using Dorado v1.1.1 with the SUP model. Reads were demultiplexed using the sequencing sample sheets and converted from BAM to compressed FASTQ format. The downstream assembly workflow presented in this repository began with the resulting per-species FASTQ files.
 
-# Dorado SUP basecalling and barcode classification
+### Dorado SUP basecalling and barcode classification
 ```
 module purge
 module load Dorado/1.1.1
@@ -38,7 +38,7 @@ dorado demux \
     --no-classify \
     "${RUN_ID}.sup.bam"
 ```
-# Demultiplexing
+### Demultiplexing
 ```
 module purge
 module load SAMtools/1.22-GCC-12.3.0
@@ -55,7 +55,7 @@ for bam in "${DEMUX_DIR}"/*.bam; do
         pigz -p 16 -9 > "${fq}"
 done
 ```
-# Combining per-species raw FASTQ
+### Combining per-species raw FASTQ
 ```
 cat run1_sample.fq.gz run2_sample.fq.gz > species_raw_reads.fq.gz
 ```
