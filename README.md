@@ -16,6 +16,15 @@ Aplidium sp. (Antarctic endemic), Aplidium coronum (New Zealand range-limited), 
 Raw Oxford Nanopore signal data were basecalled and barcode-classified by Annabel Whibley (Bragato Research Institute) using Dorado v1.1.1 with the SUP model. Reads were demultiplexed using the sequencing sample sheets and converted from BAM to compressed FASTQ format. The downstream assembly workflow presented in this repository began with the resulting per-species FASTQ files.
 
 ### Dorado SUP basecalling and barcode classification
+
+#### Sample-sheet structure
+
+The following is an example from one of the sample sheets used during basecalling. The `alias` column associates each barcode with its corresponding species. For example, reads assigned to `barcode26` belong to *Didemnum jucundum* and are represented by the alias `D_jucundum`.
+
+| protocol_run_id | position_id | flow_cell_id | sample_id | experiment_id | flow_cell_product_code | kit | barcode | alias | type |
+|---|---|---|---|---|---|---|---|---|---|
+| 92a57ab4-3f57-44d0-b955-da7af5f12ef3 | 2F | PBC89758 | LX0146 | R0521 | FLO-PRO114M | SQK-NBD114-96 | barcode26 | D_jucundum | test_sample |
+| 92a57ab4-3f57-44d0-b955-da7af5f12ef3 | 2F | PBC89758 | LX0146 | R0521 | FLO-PRO114M | SQK-NBD114-96 | barcode28 | A_coronum | test_sample |
 ```
 module purge
 module load Dorado/1.1.1
@@ -45,15 +54,13 @@ module load SAMtools/1.22-GCC-12.3.0
 module load pigz/2.7
 
 DEMUX_DIR="example_run.sup_demux"
+SAMPLE_ALIAS="D_jucundum"
 
-for bam in "${DEMUX_DIR}"/*.bam; do
-    [[ "${bam}" == *_unclassified.bam ]] && continue
+INPUT_BAM="${DEMUX_DIR}/${SAMPLE_ALIAS}.bam"
+OUTPUT_FASTQ="${SAMPLE_ALIAS}.raw.fq.gz"
 
-    fq="${bam%.bam}.fq.gz"
-
-    samtools fastq -@ 16 "${bam}" |
-        pigz -p 16 -9 > "${fq}"
-done
+samtools fastq -@ 16 "${INPUT_BAM}" |
+    pigz -p 16 -9 > "${OUTPUT_FASTQ}"
 ```
 ### Combining per-species raw FASTQ
 ```
