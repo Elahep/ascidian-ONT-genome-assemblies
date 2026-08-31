@@ -13,7 +13,7 @@ Aplidium sp. (Antarctic endemic), Aplidium coronum (New Zealand range-limited), 
 
 
 ## Step 0: SUP basecalling and demultiplexing
-Raw Oxford Nanopore signal data were basecalled and barcode-classified by Annabel Whibley (Bragato Research Institute) using Dorado v1.1.1 with the SUP model. Reads were demultiplexed using the sequencing sample sheets and converted from BAM to compressed FASTQ format. The downstream assembly workflow presented in this repository began with the resulting per-species FASTQ files.
+Raw Oxford Nanopore signal data were basecalled and barcode-classified by Dr Annabel Whibley (Bragato Research Institute) using Dorado v1.1.1 with the SUP model. Reads were demultiplexed using the sequencing sample sheets and converted from BAM to compressed FASTQ format. The downstream assembly workflow presented in this repository began with the resulting per-species FASTQ files.
 
 ### Dorado SUP basecalling and barcode classification
 
@@ -25,13 +25,18 @@ The following is an example from one of the sample sheets used during basecallin
 |---|---|---|---|---|---|---|---|---|---|
 | 92a57ab4-3f57-44d0-b955-da7af5f12ef3 | 2F | PBC89758 | LX0146 | R0521 | FLO-PRO114M | SQK-NBD114-96 | barcode26 | D_jucundum | test_sample |
 | 92a57ab4-3f57-44d0-b955-da7af5f12ef3 | 2F | PBC89758 | LX0146 | R0521 | FLO-PRO114M | SQK-NBD114-96 | barcode28 | A_coronum | test_sample |
+
+The `dorado basecaller` command produces one major BAM file for the entire sequencing run. That BAM contains basecalled reads from every barcode/sample included in that run. In this project, we used three PromethION flow cells and 13 sequencing runs across those flow cells. We basecalled each run independently, producing one combined BAM containing all barcode-classified reads from that run. The combined BAMs were subsequently demultiplexed into sample-specific files.  
 ```
 module purge
 module load Dorado/1.1.1
 
 POD5_DIR="/path/to/pod5_directory"
 SAMPLE_SHEET="/path/to/sample_sheet.csv"
-RUN_ID="example_run"
+
+# PX071: project identifier
+# R0521: experiment_id recorded in the sample sheet
+OUTPUT_PREFIX="PX071_R0521"
 
 # SUP basecalling and barcode classification
 dorado basecaller sup \
