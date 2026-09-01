@@ -214,9 +214,9 @@ calcuts -l LOWER_CUTOFF -m HAPLOID_DIPLOID_CUTOFF -u UPPER_CUTOFF PB.stat > cuto
 The most important parameter was `-m`, which defines the depth transition between haploid/primary and diploid/duplicated sequence. We repeated purging and Compleasm assessment until an acceptable balance between duplication and completeness was achieved.
 
 The selected cutoff file was then used to produce the retained purged.fa. We used the following  `-m` cutoff for different species:
-_Aplidium coronum_ - `m=33`
-_Aplidium phortax_ - `m=39`
-_Didemnum jucundum_ - `m=25`
+_Aplidium coronum_ - `m=33`; 
+_Aplidium phortax_ - `m=39`; 
+_Didemnum jucundum_ - `m=25`; 
 _Didemnum marineae_ = `m=32`
 
 ### 3.5 One round of Racon polishing
@@ -265,3 +265,4 @@ For consistent downstream naming, this can be renamed to:
 
 We again ran Compleasm on the 1x Racon and 1x medaka polished assembly. These assemblies were carried forward to contamination analyses.
 
+## Step 4: Contamination assessment 
