@@ -5,6 +5,8 @@ We assembled genomes for five species in the order Aplousobranchia:
 
 _Aplidium sp_. (Antarctic endemic), _Aplidium coronum_ (New Zealand range-limited), _Aplidium phortax_ (New Zealand broad-range), _Didemnum marineae_ (New Zealand range-limited), and  _Didemnum jucundum_ (trans-Tasman broad-range).
 
+The initial design of this workflow and several command structures were adapted from Dr Meeran Hussain’s [ONT and Illumina genome assembly and annotation workflow](https://github.com/meeranhussain/Genome_assembly_AND_annotation) for *Microctonus aethiopoides* parasitoid wasps. The workflow presented here was substantially modified for ONT-only assembly and annotation of larger ascidian genomes, with parameters and processing decisions evaluated separately for each species.
+
 ## Table of contents
 - [Step 0: Basecalling and demultiplexing](#step-0-basecalling-and-demultiplexing)
 - [Step 1: Read QC and filtering](#step-1-read-qc-and-filtering)
@@ -94,6 +96,20 @@ do
 chopper --threads 12 -q 9 -l 1000 < Combined_${i}_final.fq > Filtered_${i}.fq ;
 done
 chopper --threads 8 -q 9 -l 500 < Combined_A_phortax_1_final.fq > Filtered_Aphortax.fastq
+```
+
+#### Exploring k-mer profiling with Jellyfish and GenomeScope
+
+Canonical 21-mers were counted from the combined per-species ONT reads using `Jellyfish`. The resulting k-mer frequency histograms were examined with the web-based `GenomeScope 2.0` as an exploratory assessment of genome size, heterozygosity and repeat content.
+
+GenomeScope is designed primarily for low-error short-read data. Because the present histograms were generated from ONT reads, sequencing errors may inflate the number of low-frequency k-mers and bias the fitted genome characteristics. The GenomeScope estimates were therefore treated as exploratory and were not used to specify assembly parameters, select purge-dups thresholds or evaluate final genome sizes.
+
+```
+module load Jellyfish
+for i in A_coronum A_phortax_1 D_jucundum A_sp D_marineae_1; do 
+zcat Combined_${i}_final.fq.gz | jellyfish count -C -m 21 -s 1000000000 -t 12 -o reads_${i}.jf /dev/stdin
+jellyfish histo -t 12 reads_${i}.jf > reads_${i}.histo
+done
 ```
 
 ## Step 2: Genome assembly
@@ -254,7 +270,7 @@ RACON_ASSEMBLY="sup_basecalls/Flye/Acoronum_flye/purge_dups/polishing/${SPECIES}
 MEDAKA_OUTDIR="sup_basecalls/Flye/Acoronum_flye/purge_dups/polishing/medaka1"
 
 medaka_consensus -i "${READS}" -d "${RACON_ASSEMBLY}" -o "${MEDAKA_OUTDIR}" -t "${THREADS}"
-
+```
 The polished assembly is written by Medaka as:
 
 `sup_basecalls/Flye/Acoronum_flye/purge_dups/polishing/medaka1/consensus.fasta`
@@ -263,6 +279,240 @@ For consistent downstream naming, this can be renamed to:
 
 `A_coronum.racon1.medaka1.fasta`
 
-We again ran Compleasm on the 1x Racon and 1x medaka polished assembly. These assemblies were carried forward to contamination analyses.
+We again ran Compleasm on the 1x Racon- and 1x medaka-polished assemblies. We also ran `QUAST` to evaluate the quality of the polished assemblies, including obtaining total assembly length, N50, number of contigs, GC content, etc. These assemblies were carried forward to contamination analyses.
 
-## Step 4: Contamination assessment 
+```
+ml QUAST
+
+mkdir -p quast_compare_5
+quast.py \
+  -t 4 \
+  --eukaryote \
+  --large \
+  -o quast_compare_5 \
+  Acoronum_1xRacon_medaka.fasta \
+  Aphortax_1xRacon_medaka.fasta \
+  Djucundum_1xRacon_medaka.fasta \
+  Dmarineae_1xRacon_medaka.fasta \
+  Asp_1xRacon_medaka.fasta
+```
+
+## Step 4: Contamination assessment and removal
+
+To assess contamination in our assemblies, we used `BlobToolKit v.1.1``. We needed three complementary sources of information for this step:
+
+| Input                   | Information provided                           |
+| ----------------------- | ---------------------------------------------- |
+| Polished assembly FASTA | Contig length and GC content                   |
+| ONT read-alignment BAM  | Mean read coverage for each contig             |
+| MegaBLAST results       | Taxonomic similarity to sequences in NCBI `nt` |
+
+### 4.1 Mapping ONT reads to the polished assembly
+
+The Chopper-filtered ONT reads were mapped back to the corresponding polished assembly using minimap2. The resulting sorted BAM file was used by BlobTools to calculate mean read coverage for each contig.
+
+The following example uses _Aplidium coronum_:
+```
+ml SAMtools
+ml minimap2
+
+minimap2 -t 10 -ax map-ont Acoronum_1xRacon_medaka.fasta ../PX071_tunicate_ont/sup_basecalls/Chopper_filtered/Filtered_A_coronum.fq | samtools view -b - | samtools sort -@ 8 -o Acoronum.bam -
+
+samtools index -c Acoronum.bam
+```
+This produced:
+
+`Acoronum.bam`
+`Acoronum.bam.csi`
+
+The BAM file was not used by MegaBLAST. It was generated independently as the coverage input for BlobTools.
+
+### 4.2 Splitting the assembly into FASTA chunks
+
+The polished assemblies contained thousands of contigs. Before running MegaBLAST, each assembly was divided into smaller FASTA files containing 50 sequences.
+
+The following Python script was saved as `split_fasta_by_nseq.py`:
+```
+#!/usr/bin/env python3
+import sys
+
+fa = sys.argv[1]
+prefix = sys.argv[2]
+nseq = int(sys.argv[3])
+
+out = None
+count = 0
+idx = 0
+
+def open_new():
+    global out, idx
+    idx += 1
+    fn = f"{prefix}_{idx:04d}.fasta"
+    return open(fn, "w")
+
+with open(fa) as f:
+    for line in f:
+        if line.startswith(">"):
+            if count % nseq == 0:
+                if out:
+                    out.close()
+                out = open_new()
+            count += 1
+        if out:
+            out.write(line)
+
+if out:
+    out.close()
+```
+
+### 4.3 Running MegaBLAST on the assembly chunks
+
+We ran MegaBLAST independently on every contig chunk.
+```
+set -euo pipefail
+
+module purge
+module load BLASTDB/2026-01 BLAST/2.16.0-GCC-12.3.0
+module load Parallel/20220922 Python
+
+FA="Acoronum_1xRacon_medaka.fasta"
+CHUNK_PREFIX="Acoronum_chunk"
+NSEQ_PER_CHUNK=50
+
+THREADS_TOTAL=${SLURM_CPUS_PER_TASK}   # 16
+THREADS_PER_BLAST=2
+JOBS=$(( THREADS_TOTAL / THREADS_PER_BLAST ))  # 8
+
+mkdir -p megablast_chunks megablast_out
+cp "$FA" megablast_chunks/
+cd megablast_chunks
+
+# Split the assembly into chunks before running MegaBLAST
+python ../split_fasta_by_nseq.py "$FA" "$CHUNK_PREFIX" "$NSEQ_PER_CHUNK"
+
+# Run MegaBLAST independently on each assembly chunk
+ls ${CHUNK_PREFIX}_*.fasta | parallel -j "$JOBS" --halt soon,fail=1 \
+  "blastn -query {} \
+     -task megablast \
+     -db nt \
+     -max_target_seqs 5 \
+     -culling_limit 1 \
+     -evalue 1e-10 \
+     -num_threads $THREADS_PER_BLAST \
+     -outfmt '6 qseqid staxids pident length evalue bitscore sscinames sskingdoms stitle' \
+     -out ../megablast_out/{/.}.tsv"
+
+cd ..
+```
+
+The output format contained:
+
+| Column | Information         |
+| -----: | ------------------- |
+|      1 | Query contig ID     |
+|      2 | NCBI TaxID          |
+|      3 | Percentage identity |
+|      4 | Alignment length    |
+|      5 | E-value             |
+|      6 | Bitscore            |
+|      7 | Scientific name     |
+|      8 | Superkingdom        |
+|      9 | Hit description     |
+
+### 4.4 Combining the MegaBLAST results
+After all chunk-level MegaBLAST searches had finished, the individual result files were concatenated:
+
+`cat megablast_out/*.tsv > Acoronum_megablast.tsv`
+
+### 4.5 Creating a best-hit table
+
+A separate table containing the highest-bitscore hit for each contig was generated for manual inspection:
+```
+awk -F'\t' '
+{
+  q=$1; bits=$6;
+  if(!(q in best) || bits > best[q]){ best[q]=bits; line[q]=$0 }
+}
+END{
+  for(q in line) print line[q]
+}' Aphortax_megablast.tsv > Aphortax_besthit.tsv
+```
+The complete MegaBLAST output was retained for BlobTools. The best-hit table was used as an additional aid when manually investigating suspicious contigs.
+
+### 4.6 BlobTools analysis
+
+Meeran's workflow used the newer interactive BlobToolKit available through NeSI. However, this version did not run successfully in my NeSI environment. I therefore used command-line BlobTools v1.1, installed directly from GitHub.
+
+The Conda installation did not work, so BlobTools was invoked using the Python executable from its Conda environment.
+
+NCBI taxonomy files were first downloaded and used to construct the BlobTools taxonomy database:
+```
+mkdir taxdump
+cd taxdump
+
+wget https://ftp.ncbi.nih.gov/pub/taxonomy/taxdump.tar.gz
+tar -xzf taxdump.tar.gz
+~/.conda/envs/blobtools/bin/python ./blobtools nodesdb \
+  --nodes data/nodes.dmp \
+  --names data/names.dmp
+```
+
+The following example uses _Aplidium coronum_:
+```
+~/.conda/envs/blobtools/bin/python ./blobtools create \
+  -i ../fq_purged_polished/Acoronum_1xRacon_medaka.fasta \
+  -b ../fq_purged_polished/Acoronum.bam \
+  -t ../fq_purged_polished/megablast_out_Acoronum/Acoronum_megablast.tsv \
+  --nodes ./data/nodes.dmp \
+  --names ./data/names.dmp \
+  -o Acoronum_blob
+```
+
+The FASTA, BAM and MegaBLAST files represented the same polished assembly stage.
+
+Blob plots and tabular summaries were then generated:
+```
+~/.conda/envs/blobtools/bin/python ./blobtools plot \
+  -i Acoronum_blob.blobDB.json \
+  -o Acoronum_blob
+~/.conda/envs/blobtools/bin/python ./blobtools view \
+  -i Acoronum_blob.blobDB.json \
+  -o Acoronum_blob
+```
+The plots and tables were used to examine contig taxonomy, GC content and ONT read coverage. In the BlobTools table, `bam0_mean` represents the mean mapped-read depth for each contig.
+
+### 4.7 Conservative contamination removal
+
+Candidate contaminants were assessed using several lines of evidence:
+- Taxonomic assignment
+- Position relative to the main chordate GC–coverage distribution
+- Mean ONT read coverage
+- Contig length
+- MegaBLAST percentage identity and alignment length
+- MegaBLAST hit description
+- Effect of removal on Compleasm completeness
+
+An initial broad strategy removed zero-coverage contigs and most sequences assigned outside Chordata. This substantially reduced Compleasm completeness in several assemblies, indicating that many non-chordate best hits reflected limited taxonomic representation of ascidians rather than genuine contamination.
+
+We therefore rejected the broad filtering strategy. Final removal was restricted to clear microbial contaminants and obvious assembly artefacts supported by the combined BlobTools, coverage and MegaBLAST evidence. Ambiguous metazoan and no-hit contigs were retained unless additional evidence supported their removal.
+
+Species-specific removal lists were generated from the BlobTools results and manually reviewed. The selected contigs were removed using SeqKit:
+
+```
+ml SeqKit
+seqkit grep -v -f Acoronum.removebacterial.ids ../fq_purged_polished/Acoronum_1xRacon_medaka.fasta > Acoronum_nobact.fasta
+```
+Sequences shorter than 200 bp were then removed:
+```
+seqkit seq -m 200 Acoronum_nobact.fasta > Acoronum_nobact_min200.fasta
+```
+### 4.8 Validation of the cleaned assemblies
+
+The number of removed contigs and the sequence counts before and after filtering were recorded:
+
+`wc -l Acoronum.removebacterial.ids`
+`grep -c "^>" Acoronum_1xRacon_medaka.fasta`
+`grep -c "^>" Acoronum_nobact_min200.fasta`
+
+We also reran Compleasm and QUAST to confirm that contamination removal had not substantially reduced genome completeness, changed total assembly size or adversely affected contiguity. The cleaned assemblies were then carried forward to scaffolding.
+
