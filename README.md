@@ -12,7 +12,9 @@ The initial design of this workflow and several command structures were adapted 
 - [Step 1: Read QC and filtering](#step-1-read-qc-and-filtering)
 - [Step 2: Genome assembly](#step-2-genome-assembly)
 - [Step 3: Haplotig purging and assembly polishing](#step-3-assembly-polishing)
-- [Step 4: Contamination assessment](#step-3-contamination-assessment)
+- [Step 4: Contamination assessment and removal](#step-4-contamination-assessment-and-removal)
+- [Step 5: Scaffolding and gap filling](#step-5-scaffolding-and-gap-filling)
+
 
 ## Step 0: SUP basecalling and demultiplexing
 Raw Oxford Nanopore signal data were basecalled and barcode-classified by Dr Annabel Whibley (Bragato Research Institute) using Dorado v1.1.1 with the SUP model. Reads were demultiplexed using the sequencing sample sheets and converted from BAM to compressed FASTQ format. The downstream assembly workflow presented in this repository began with the resulting per-species FASTQ files.
@@ -515,4 +517,38 @@ The number of removed contigs and the sequence counts before and after filtering
 `grep -c "^>" Acoronum_nobact_min200.fasta`
 
 We also reran Compleasm and QUAST to confirm that contamination removal had not substantially reduced genome completeness, changed total assembly size or adversely affected contiguity. The cleaned assemblies were then carried forward to scaffolding.
+
+## Step 5: Scaffolding and gap filling
+The contamination-filtered assemblies were scaffolded with ntLink using the corresponding Chopper-filtered ONT reads. Different combinations of minimizer k-mer size (k) and window size (w) were tested for each species, as recommended by the ntLink developers:
+
+```
+k = 24, 32 or 40
+w = 100, 250 or 500
+z = 1000
+```
+Each combination was run using the following code:
+```
+module load LongStitch
+ntLink scaffold target=<cleaned_assembly.fasta> reads=<filtered_ONT_reads.fq> prefix=k${k}_w${w} k=${k} w=${w} z=1000 t=8
+```
+Candidate assemblies were compared using the number of scaffolds, average and maximum scaffold lengths, total assembly size, number of Ns, QUAST statistics and Compleasm completeness. The selected parameters were:
+| Species             | `k` | `w` |
+| ------------------- | --: | --: |
+| *Aplidium coronum*  |  40 | 500 |
+| *Aplidium phortax*  |  24 | 500 |
+| *Aplidium* sp.      |  40 | 500 |
+| *Didemnum jucundum* |  40 | 500 |
+| *Didemnum marinae*  |  32 | 500 |
+
+The selected scaffolded assembly was then subjected to ntLink gap filling. For example:
+```
+module load LongStitch
+ntLink scaffold gap_fill target=Acoronum_nobact_min200.k40.w500.fa reads=Filtered_A_coronum.fq t=8
+```
+This produced:
+
+`Acoronum_nobact_min200.k40.w500.fa.k32.w100.z1000.ntLink.scaffolds.gap_fill.fa`
+
+Here, k40.w500 identifies the selected input scaffold, while k32.w100.z1000 records the default parameters used during the subsequent gap-filling run. The gap-filled assemblies were carried forward to a final round of Medaka polishing.
+
 
