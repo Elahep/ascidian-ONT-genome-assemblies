@@ -14,6 +14,7 @@ The initial design of this workflow and several command structures were adapted 
 - [Step 3: Haplotig purging and assembly polishing](#step-3-assembly-polishing)
 - [Step 4: Contamination assessment and removal](#step-4-contamination-assessment-and-removal)
 - [Step 5: Scaffolding and gap filling](#step-5-scaffolding-and-gap-filling)
+- [Step 6: Repeat identification and masking](#step-6-repeat-identification-and-masking)
 
 
 ## Step 0: SUP basecalling and demultiplexing
@@ -549,6 +550,72 @@ This produced:
 
 `Acoronum_nobact_min200.k40.w500.fa.k32.w100.z1000.ntLink.scaffolds.gap_fill.fa`
 
-Here, k40.w500 identifies the selected input scaffold, while k32.w100.z1000 records the default parameters used during the subsequent gap-filling run. The gap-filled assemblies were carried forward to a final round of Medaka polishing.
+Here, k40.w500 identifies the selected input scaffold, while k32.w100.z1000 records the default parameters used during the subsequent gap-filling run. The gap-filled assemblies were carried forward to a final round of Medaka polishing, followed by another Compleasm and QUAST quality assessment.
+
+## Step 6: Repeat identification and masking
+
+[EDTA](https://github.com/oushujun/EDTA) was used to identify and annotate repetitive elements and produce soft-masked genomes for gene prediction. The same workflow was applied to our assemblies and the publicly available *Aplidium turbinatum* and *Didemnum vexillum* genomes to represent two additional wide-range species for each genus.
+
+### 6.1 Preparing genome FASTA files
+
+Before EDTA, contig names were shortened and standardized using species-specific identifiers. This was done for both our assemblies and the NCBI genomes to avoid problems with long or complex FASTA headers.
+
+For the NCBI genomes, a mapping file was retained to connect the renamed sequences to their original identifiers. For example, the *D. vexillum* assembly was renamed as follows:
+
+```bash
+awk '
+BEGIN {OFS="\t"}
+/^>/ {
+n++
+old=substr($0,2)
+split(old,a," ")
+new=sprintf("Dv_seq%03d",n)
+print new,a[1],old >> "Dv_sequence_name_map.tsv"
+print ">"new
+next
+}
+{print}
+' GCA_965643705.1_kaDidVexi2_genomic.fna > Dvexillum_renamed.fasta
+```
+
+This produced the renamed genome `Dvexillum_renamed.fasta` and the identifier mapping file `Dv_sequence_name_map.tsv`. The same procedure, using appropriate species-specific prefixes, was applied to *A. turbinatum* and our assembled genomes.
+
+For the downloaded NCBI assemblies, we also checked whether the sequence had already been soft-masked:
+
+```bash
+grep -v "^>" Dvexillum_renamed.fasta | tr -cd 'a-z' | wc -c
+```
+
+A result of `0` indicates that no lowercase, soft-masked sequence is present. Where necessary, lowercase bases were converted to uppercase before EDTA:
+
+```bash
+awk '/^>/ {print; next} {print toupper($0)}' Dvexillum_renamed.fasta > Dvexillum_renamed_unmasked.fasta
+```
+
+### 6.2 Running EDTA
+
+The following example shows the EDTA analysis for *Aplidium coronum*:
+
+```bash
+ml EDTA
+EDTA.pl --genome /nesi/nobackup/uow04282/EDTA/Acoronum/Acoronum_ntLink_gapfilling_1xmedaka_renamed.fasta --species others --threads 12 --sensitive 1 --anno 1 --overwrite 0
+```
+
+`--sensitive 1` enables sensitive repeat discovery and `--anno 1` generates genome-wide transposable-element annotations.
+
+### 6.3 Generating the soft-masked genome
+
+The EDTA annotation was then used to generate a soft-masked genome:
+
+```bash
+perl /nesi/project/uow04282/EDTA/EDTA/bin/make_masked.pl \
+  -genome Acoronum_ntLink_gapfilling_1xmedaka_renamed.fasta \
+  -minlen 1000 \
+  -hardmask 0 \
+  -t 8 \
+  -rmout Acoronum_ntLink_gapfilling_1xmedaka_renamed.fasta.mod.EDTA.anno/Acoronum_ntLink_gapfilling_1xmedaka_renamed.fasta.mod.EDTA.TEanno.out
+```
+
+Setting `-hardmask 0` represents annotated repeats as lowercase bases rather than replacing them with `N`s. The resulting soft-masked genomes were used in the subsequent gene-annotation workflow.
 
 
