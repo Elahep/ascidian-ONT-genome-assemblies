@@ -9,8 +9,8 @@ _Aplidium sp_. (Antarctic endemic), _Aplidium coronum_ (New Zealand range-limite
 - [Step 0: Basecalling and demultiplexing](#step-0-basecalling-and-demultiplexing)
 - [Step 1: Read QC and filtering](#step-1-read-qc-and-filtering)
 - [Step 2: Genome assembly](#step-2-genome-assembly)
-- [Step 3: Assembly polishing](#step-3-assembly-polishing)
-
+- [Step 3: Haplotig purging and assembly polishing](#step-3-assembly-polishing)
+- [Step 4: Contamination assessment](#step-3-contamination-assessment)
 
 ## Step 0: SUP basecalling and demultiplexing
 Raw Oxford Nanopore signal data were basecalled and barcode-classified by Dr Annabel Whibley (Bragato Research Institute) using Dorado v1.1.1 with the SUP model. Reads were demultiplexed using the sequencing sample sheets and converted from BAM to compressed FASTQ format. The downstream assembly workflow presented in this repository began with the resulting per-species FASTQ files.
@@ -107,4 +107,161 @@ flye --nano-hq ../Chopper_filtered/Filtered_A_sp.fq --genome-size 600m --asm-cov
 flye --nano-hq ../Chopper_filtered/Filtered_D_jucundum.fq --genome-size 1.1g --asm-coverage 40 --out-dir Sadareanum_flye --threads 20
 flye --nano-hq ../Chopper_filtered/Filtered_D_marineae_1.fq --genome-size 1.1g --asm-coverage 40 --out-dir Sadareanum_flye --threads 20
 ```
+
+## Step 3: Haplotig purging and assembly polishing
+We first ran `Compleasm` with the `metazoa_odb10` lineage on the FLYE-assembled genomes to obtain a baseline genome completeness for each assembly. Assemblies containing more than 2% duplicated BUSCOs were processed with `purge_dups`. We aimed to reduce duplication below 10% while, where possible, retaining missing BUSCOs below approximately 10% (keeping D acceptably low (<10%) without a big penalty in M).
+
+We  initially estimated purge-dups coverage thresholds from the mapped-read depth distribution. Compleasm was run again after purging, and the thresholds were adjusted where necessary to balance the removal of duplicated regions against the loss of genome completeness.
+
+The Flye assembly of _Aplidium sp_. contained less than 2% duplicated BUSCOs and, therefore, we did not process it with purge_dups.
+
+Following haplotig purging, the retained primary assemblies were polished using one round of `Racon` followed by one round of `Medaka`. The same polishing procedure was applied directly to the Flye assembly of _Aplidium sp_.
+
+### 3.1 Baseline completeness assessment
+
+The following example uses _Aplidium coronum_:
+```
+module purge
+module load compleasm/0.2.5-gimkl-2022a
+
+SPECIES="A_coronum"
+FLYE_ASSEMBLY="sup_basecalls/Flye/Acoronum_flye/assembly.fasta"
+
+compleasm.py run -a "${FLYE_ASSEMBLY}" -o "compleasm/${SPECIES}_flye" -l metazoa_odb10 -t 12
+```
+Assemblies with duplicated BUSCOs above 2% were carried forward to haplotig purging.
+
+### 3.2 Mapping reads for purge_dups
+
+Chopper-filtered ONT reads were mapped back to the corresponding Flye assembly. The alignments were converted to PAF format for read-depth estimation with `pbcstat`.
+
+```
+module purge
+module load minimap2/2.28-GCC-12.3.0
+module load SAMtools/1.22-GCC-12.3.0
+
+SPECIES="A_coronum"
+THREADS=14
+
+ASM="sup_basecalls/Flye/Acoronum_flye/assembly.fasta"
+READS="reads/${SPECIES}.q9.min1kb.fq.gz"
+OUTDIR="sup_basecalls/Flye/Acoronum_flye/purge_dups"
+
+mkdir -p "${OUTDIR}"
+
+minimap2 -a -x map-ont -t "${THREADS}" "${ASM}" "${READS}" | samtools sort -@ "${THREADS}" -o "${OUTDIR}/reads_vs_assembly.bam"
+
+samtools index "${OUTDIR}/reads_vs_assembly.bam"
+
+samtools view -@ "${THREADS}" -h "${OUTDIR}/reads_vs_assembly.bam" > "${OUTDIR}/reads_vs_assembly.sam"
+```
+
+### 3.3 Haplotig identification and removal
+```
+module purge
+module load purge_dups/1.2.6-gimkl-2022a-Python-3.10.5
+module load minimap2/2.28-GCC-12.3.0
+
+SPECIES="A_coronum"
+ASM="sup_basecalls/Flye/Acoronum_flye/assembly.fasta"
+OUTDIR="sup_basecalls/Flye/Acoronum_flye/purge_dups"
+
+cd "${OUTDIR}"
+
+# Convert mapped-read alignments to PAF
+paftools.js sam2paf reads_vs_assembly.sam > "${SPECIES}.reads_vs_assembly.paf"
+
+# Calculate read-depth statistics
+pbcstat "${SPECIES}.reads_vs_assembly.paf"
+
+# Estimate the initial depth thresholds
+calcuts PB.stat > cutoffs 2> calcuts.log
+
+# Split the assembly and perform a self-alignment
+split_fa "${ASM}" > assembly.split.fasta
+
+minimap2 -x asm5 -DP assembly.split.fasta assembly.split.fasta | gzip -c > assembly.self.paf.gz
+
+# Identify duplicated regions
+purge_dups -2 -T cutoffs -c PB.base.cov assembly.self.paf.gz > dups.bed 2> purge_dups.log
+
+# Generate the retained primary assembly and removed haplotigs
+get_seqs -e dups.bed "${ASM}"
+```
+
+This produces:
+```
+purged.fa    retained primary assembly
+hap.fa       removed haplotigs
+```
+### 3.4 Evaluating and adjusting the purge-dups thresholds
+
+Compleasm was rerun on purged.fa:
+```
+module purge
+module load compleasm/0.2.5-gimkl-2022a
+
+SPECIES="A_coronum"
+PURGED_ASSEMBLY="sup_basecalls/Flye/Acoronum_flye/purge_dups/purged.fa"
+
+compleasm.py run -a "${PURGED_ASSEMBLY}" -o "compleasm/${SPECIES}_purged" -l metazoa_odb10 -t 12
+```
+If excessive duplication remained or missing BUSCOs increased substantially, the read-depth histogram was inspected and the purge-dups thresholds were adjusted:
+```
+calcuts -l LOWER_CUTOFF -m HAPLOID_DIPLOID_CUTOFF -u UPPER_CUTOFF PB.stat > cutoffs.manual
+```
+
+The most important parameter was `-m`, which defines the depth transition between haploid/primary and diploid/duplicated sequence. We repeated purging and Compleasm assessment until an acceptable balance between duplication and completeness was achieved.
+
+The selected cutoff file was then used to produce the retained purged.fa. We used the following  `-m` cutoff for different species:
+_Aplidium coronum_ - `m=33'
+_Aplidium phortax_ - `m=39`
+_Didemnum jucundum_ - `m=25`
+_Didemnum marineae_ = `m=32`
+
+### 3.5 One round of Racon polishing
+
+For species processed with purge_dups, purged.fa was used as the Racon input. For _Aplidium sp._, the original Flye assembly was used instead.
+```
+module load minimap2
+module load SAMtools
+module load Racon
+
+ASM="sup_basecalls/Flye/Acoronum_flye/purge_dups/purged.fa"
+READS="sup_basecalls/Chopper_filtered/Filtered_A_coronum.fq"
+OUTDIR="sup_basecalls/Flye/Acoronum_flye/purge_dups/polishing"
+
+mkdir -p "${OUTDIR}"
+
+minimap2 -a -x map-ont -t "${THREADS}" "${ASM}" "${READS}" | samtools sort -@ "${THREADS}" -o "${OUTDIR}/reads_vs_purged.bam"
+
+samtools view -h "${OUTDIR}/reads_vs_purged.bam" > "${OUTDIR}/reads_vs_purged.sam"
+
+racon -t "${THREADS}" "${READS}" "${OUTDIR}/reads_vs_purged.sam" "${ASM}" > "${OUTDIR}/${SPECIES}.racon1.fasta"
+```
+### 3.6 One round of Medaka polishing
+
+The Racon-polished assembly was subsequently polished with Medaka v2.2.0:
+```
+module purge
+module load medaka/2.2.0-Miniforge3-25.3.1-0
+
+SPECIES="A_coronum"
+THREADS=6
+
+READS="sup_basecalls/Chopper_filtered/Filtered_A_coronum.fq"
+RACON_ASSEMBLY="sup_basecalls/Flye/Acoronum_flye/purge_dups/polishing/${SPECIES}.racon1.fasta"
+MEDAKA_OUTDIR="sup_basecalls/Flye/Acoronum_flye/purge_dups/polishing/medaka1"
+
+medaka_consensus -i "${READS}" -d "${RACON_ASSEMBLY}" -o "${MEDAKA_OUTDIR}" -t "${THREADS}"
+
+The polished assembly is written by Medaka as:
+
+`sup_basecalls/Flye/Acoronum_flye/purge_dups/polishing/medaka1/consensus.fasta`
+
+For consistent downstream naming, this can be renamed to:
+
+`A_coronum.racon1.medaka1.fasta`
+
+We again ran Compleasm on the 1x Racon and 1x medaka polished assembly. These assemblies were carried forward to contamination analyses.
 
