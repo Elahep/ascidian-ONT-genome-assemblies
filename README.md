@@ -3,7 +3,7 @@ This repository contains the code and workflows used to assemble and annotate as
 
 We assembled genomes for five species in the order Aplousobranchia:
 
-Aplidium sp. (Antarctic endemic), Aplidium coronum (New Zealand range-limited), Aplidium phortax (New Zealand broad-range), Didemnum marineae (New Zealand range-limited), and  Didemnum jucundum (trans-Tasman broad-range).
+_Aplidium sp_. (Antarctic endemic), _Aplidium coronum_ (New Zealand range-limited), _Aplidium phortax_ (New Zealand broad-range), _Didemnum marineae_ (New Zealand range-limited), and  _Didemnum jucundum_ (trans-Tasman broad-range).
 
 ## Table of contents
 - [Step 0: Basecalling and demultiplexing](#step-0-basecalling-and-demultiplexing)
@@ -94,5 +94,17 @@ do
 chopper --threads 12 -q 9 -l 1000 < Combined_${i}_final.fq > Filtered_${i}.fq ;
 done
 chopper --threads 8 -q 9 -l 500 < Combined_A_phortax_1_final.fq > Filtered_Aphortax.fastq
+```
+
+## Step 2: Genome assembly
+We used FLYE for genome assembly using the filtered fq files from the previous step for each species separately. FLYE requires an estimate of the genome size (the `-g` parameter). We set `-g` as 600 Mb for the _Aplidium_ species and 1.1 Gb for the _Didemnum_ species.
+
+```
+module load Flye
+flye --nano-hq ../Chopper_filtered/Filtered_A_coronum.fq --genome-size 600m --asm-coverage 40 --out-dir Sadareanum_flye --threads 20
+flye --nano-hq ../Chopper_filtered/Filtered_A_phortax.fq --genome-size 600m --asm-coverage 40 --out-dir Sadareanum_flye --threads 20
+flye --nano-hq ../Chopper_filtered/Filtered_A_sp.fq --genome-size 600m --asm-coverage 40 --out-dir Sadareanum_flye --threads 20
+flye --nano-hq ../Chopper_filtered/Filtered_D_jucundum.fq --genome-size 1.1g --asm-coverage 40 --out-dir Sadareanum_flye --threads 20
+flye --nano-hq ../Chopper_filtered/Filtered_D_marineae_1.fq --genome-size 1.1g --asm-coverage 40 --out-dir Sadareanum_flye --threads 20
 ```
 
