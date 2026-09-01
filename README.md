@@ -73,3 +73,26 @@ cat run1_sample.fq.gz run2_sample.fq.gz > species_raw_reads.fq.gz
 ```
 
 ## Step 1: Read QC and filtering
+We examined read quality and length distribution for each species with Nanoplot. Based on the Nanoplot results, we filtered raw reads with a minimum quality score of 9 (Q9) and a minimum read length of 1,000 bp. For _Aplidium phortax_ we used a minimum read length of 500 bp to retain more reads in this sample which had shorter read-length distribution. 
+We ran Nanoplot again after filtering to evaluate the retained read-length and quality distributions and to record summary statistics, including total read count, total yield and read N50.
+
+```
+module load NanoPlot/1.43.0-foss-2023a-Python-3.11.6
+export PYTHONNOUSERSITE=1
+
+NanoPlot --fastq ./Chopper_filtered/Filtered_D_marineae_1.fq -t 16 -o marinae_chopper_nanoplot
+
+gunzip Combined_D_marineae_1_final.fq.gz
+gunzip Combined_A_coronum_final.fq.gz
+gunzip Combined_A_phortax_1_final.fq.gz
+gunzip Combined_D_jucundum_final.fq.gz
+gunzip Combined_A_sp_final.fq.gz
+
+module load chopper
+for i in D_jucundum A_coronum A_sp D_marineae_1
+do
+chopper --threads 12 -q 9 -l 1000 < Combined_${i}_final.fq > Filtered_${i}.fq ;
+done
+chopper --threads 8 -q 9 -l 500 < Combined_A_phortax_1_final.fq > Filtered_Aphortax.fastq
+```
+
