@@ -601,9 +601,19 @@ ml EDTA
 EDTA.pl --genome /nesi/nobackup/uow04282/EDTA/Acoronum/Acoronum_ntLink_gapfilling_1xmedaka_renamed.fasta --species others --threads 12 --sensitive 1 --anno 1 --overwrite 0
 ```
 
-`--sensitive 1` enables sensitive repeat discovery and `--anno 1` generates genome-wide transposable-element annotations.
+`--sensitive 1` enables sensitive repeat discovery, and `--anno 1` generates genome-wide transposable-element annotations.
+
+The EDTA run creates many files. The sum file contains the information about TE statistics that we need to report in the paper.
+
+The genome is now, by default, hard-masked. We want it to be soft-masked, so we need to do the following.
+
+This is an alternative to RepeatMasker. This will soft-mask the genome, keeping minlen 1000 bp so the genes and near genes won't be masked, as if that happens can interfere with annotation.
 
 ### 6.3 Generating the soft-masked genome
+
+First, git clone the EDTA GitHub repository and chmod +x for all the scripts in bin:
+git clone https://github.com/oushujun/EDTA.git
+chmod -R +x EDTA.pl bin/*.pl
 
 The EDTA annotation was then used to generate a soft-masked genome:
 
