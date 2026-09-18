@@ -3,7 +3,7 @@ This repository contains the code and workflows used to assemble and annotate as
 
 We assembled genomes for five species in the order Aplousobranchia:
 
-_Aplidium sp_. (Antarctic endemic), _Aplidium coronum_ (New Zealand range-limited), _Aplidium phortax_ (New Zealand broad-range), _Didemnum marineae_ (New Zealand range-limited), and  _Didemnum jucundum_ (trans-Tasman broad-range).
+_Aplidium siderum_. (Antarctic endemic), _Aplidium coronum_ (New Zealand range-limited), _Aplidium phortax_ (New Zealand broad-range), _Didemnum marineae_ (New Zealand range-limited), and  _Didemnum jucundum_ (trans-Tasman broad-range).
 
 The initial design of this workflow and several command structures were adapted from Dr Meeran Hussain’s [ONT and Illumina genome assembly and annotation workflow](https://github.com/meeranhussain/Genome_assembly_AND_annotation) for *Microctonus aethiopoides* parasitoid wasps. The workflow presented here was substantially modified for ONT-only assembly and annotation of larger ascidian genomes, with parameters and processing decisions evaluated separately for each species.
 
