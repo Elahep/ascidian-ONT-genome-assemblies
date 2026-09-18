@@ -884,7 +884,7 @@ perl /nesi/project/uow04282/software/quickprot/bin/TransDecoder-5.7.1/util/gff3_
   > Djucundum_repfil_pep.fasta
 ```
 
-The principal outputs used in downstream analyses were:
+The main outputs used in downstream analyses were:
 
 * `Djucundum_repfil.gff3`: final repeat-filtered structural annotation.
 * `Djucundum_repfil_pep.fasta`: corresponding predicted protein sequences.
