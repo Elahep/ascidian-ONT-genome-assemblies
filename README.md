@@ -15,7 +15,7 @@ The initial design of this workflow and several command structures were adapted 
 - [Step 4: Contamination assessment and removal](#step-4-contamination-assessment-and-removal)
 - [Step 5: Scaffolding and gap filling](#step-5-scaffolding-and-gap-filling)
 - [Step 6: Repeat identification and masking](#step-6-repeat-identification-and-masking)
-- [Step 7: Structural annotation and gene-model refinement](#step-6-structural-annotation-and-gene-model-refinement)
+- [Step 7: Structural annotation and gene-model refinement](#step-7-structural-annotation-and-gene-model-refinement)
 
 ## Step 0: SUP basecalling and demultiplexing
 Raw Oxford Nanopore signal data were basecalled and barcode-classified by Dr Annabel Whibley (Bragato Research Institute) using Dorado v1.1.1 with the SUP model. Reads were demultiplexed using the sequencing sample sheets and converted from BAM to compressed FASTQ format. The downstream assembly workflow presented in this repository began with the resulting per-species FASTQ files.
